@@ -35,7 +35,6 @@ find_package(Gflags REQUIRED)
 find_package(Glog REQUIRED)
 
 include_directories(include ${PROJECT_SOURCE_DIR} ${Boost_INCLUDE_DIRS} ${EIGEN3_INCLUDE_DIR} ${GFLAGS_INCLUDE_DIR} ${GLOG_INCLUDE_DIRS} ${GTEST_INCLUDE_DIRS})
-
 ## Header files
 file(GLOB_RECURSE HEADER_FILES include/*.hpp include/*.h)
 add_custom_target(header_files SOURCES ${HEADER_FILES})
