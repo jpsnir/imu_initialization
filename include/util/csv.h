@@ -68,6 +68,20 @@ bool write(const Eigen::MatrixBase<Derived> &data, const std::string &path, int 
     return (!output.fail() && !output.bad());
 }
 
+template<typename Derived>
+bool write(const Eigen::MatrixBase<Derived> &data, const std::string &path, const std::string header, int precision = 6, std::string delim = ",") {
+
+    Eigen::IOFormat fmt(Eigen::StreamPrecision, Eigen::DontAlignCols, delim, "\n");
+
+    std::ofstream output(path);
+
+    output << std::setprecision(precision);
+    output << header;
+    output << std::fixed << data.format(fmt);
+
+    return (!output.fail() && !output.bad());
+}
+
 } // namespace csv
 
 #endif // CSV_H_
