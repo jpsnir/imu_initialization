@@ -189,6 +189,19 @@ void save(const std::vector<evaluation_t> &data, const std::string &save_path)
   csv::write(m, save_path);
 }
 
+void write_result_to_csv(fs::path filepath, ResultType result)
+void write_result_to_file(fs::path filepath, ResultType result){
+  fstream store_result;
+  store_result.open(filepath.string(), ios::out | ios::app);
+  store_result << "Proposed output solution with IMU alignment \n"
+                       << "scale = " << result.scale << endl 
+                       << "bias_g = " << result.bias_g << endl
+                       << "bias_a = " << result.bias_a << endl
+                       << "gravity = " << result.gravity << endl
+                       << "-------------------------------------------" << endl;
+  store_result.close();
+}
+
 void run(const fs::path &sequence_path)
 {
 
@@ -320,7 +333,7 @@ void run(const fs::path &sequence_path)
       LOG(INFO) << "Average acceleration error : " << avgA_error;
       LOG(INFO) << " Calibration started  ";
       char c;
-      cin >> c;
+      //cin >> c;
       // Compute average acceleration error to know if the calibration is needed.
       // THis is trying to compute the error based on average acceleration in the preintegration time frame
       // If the magnitude is nearly 9,81 we can assume that there is no acceleration the system is already calibrated
@@ -350,7 +363,6 @@ void run(const fs::path &sequence_path)
           proposed_result.bias_g = gyroscope_result.bias_g;
           proposed_result.bias_a = accelerometer_result.bias_a;
           proposed_result.gravity = accelerometer_result.gravity;
-
           if (proposed_result.success)
           {
             const double scale_error = 100. * std::abs(proposed_result.scale - 1.);
@@ -363,6 +375,8 @@ void run(const fs::path &sequence_path)
           }
           else
             LOG(ERROR) << "Proposed method failed at " << timestamp;
+          
+          write_result_to_file("./proposed_result.txt", proposed_result);
         }
 
         {
@@ -393,7 +407,10 @@ void run(const fs::path &sequence_path)
           }
           else
             LOG(ERROR) << "Proposed w/o prior method failed at " << timestamp;
-        }
+          
+          write_result_to_file("./result_proposed_prior.txt", proposed_result)  ;  
+          }
+        
 
         {
           ResultType iterative_result;
@@ -411,6 +428,8 @@ void run(const fs::path &sequence_path)
           }
           else
             LOG(ERROR) << "Iterative method failed at " << timestamp;
+          
+          write_result_to_file("./result_iterative.txt", iterative_result) ;
         }
 
         {
@@ -429,6 +448,7 @@ void run(const fs::path &sequence_path)
           }
           else
             LOG(ERROR) << "Iterative w/o prior method failed at " << timestamp;
+          write_result_to_file("./result_iterative_prior.txt", iterative_result);
         }
 
         {
@@ -458,6 +478,7 @@ void run(const fs::path &sequence_path)
           }
           else
             LOG(ERROR) << "MQH method failed at " << timestamp;
+          write_result_to_file("./result_mqh.txt", mqh_result);
         }
 
         i = next(i_, trajectory.cend(), 500000000);
@@ -494,6 +515,7 @@ void run(const fs::path &sequence_path)
 
   LOG(INFO) << "done." << std::endl;
 }
+
 
 int main(int argc, char *argv[])
 {

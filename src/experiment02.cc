@@ -36,6 +36,7 @@
 #include "util/csv.h"
 #include "util/timer.h"
 
+using namespace std;
 namespace fs = boost::filesystem;
 
 using Trajectory = std::vector<io::trajectory_t<double>>;
@@ -225,6 +226,17 @@ Eigen::Isometry3d compute_scale(const InputType &input, const Groundtruth &groun
   T.translation() = M.block<3, 1>(0, 3);
   return T;
 }
+void write_result_to_file(fs::path filepath, ResultType result){
+  fstream store_result;
+  store_result.open(filepath.string(), ios::out | ios::app);
+  store_result << "Proposed output solution with IMU alignment \n"
+                       << "scale = " << result.scale << endl 
+                       << "bias_g = " << result.bias_g << endl
+                       << "bias_a = " << result.bias_a << endl
+                       << "gravity = " << result.gravity << endl
+                       << "-------------------------------------------" << endl;
+  store_result.close();
+}
 
 void save(const std::vector<evaluation_t> &data, const std::string &save_path) {
   const int n = 7;
@@ -396,6 +408,7 @@ void run(const fs::path &sequence_path) {
               scale_error, gyro_bias_error, gyro_bias_error2, acc_bias_error, acc_bias_error2, gravity_error);
         } else
           LOG(ERROR) << "Proposed method failed at " << timestamp;
+        write_result_to_file("./proposed_camera_result.txt", proposed_result);
       }
 
       {
@@ -424,6 +437,7 @@ void run(const fs::path &sequence_path) {
               scale_error, gyro_bias_error, gyro_bias_error2, acc_bias_error, acc_bias_error2, gravity_error);
         } else
           LOG(ERROR) << "Proposed w/o prior method failed at " << timestamp;
+        write_result_to_file("./proposed_camera_result_wo_prior.txt", proposed_result);
       }
 
       {
@@ -456,6 +470,7 @@ void run(const fs::path &sequence_path) {
               scale_error, gyro_bias_error, gyro_bias_error2, acc_bias_error, acc_bias_error2, gravity_error);
         } else
           LOG(ERROR) << "Iterative method failed at " << timestamp;
+        write_result_to_file("./iterative_camera_result.txt", iterative_result);
       }
 
       {
@@ -488,6 +503,7 @@ void run(const fs::path &sequence_path) {
               scale_error, gyro_bias_error, gyro_bias_error2, acc_bias_error, acc_bias_error2, gravity_error);
         } else
           LOG(ERROR) << "Iterative w/o prior method failed at " << timestamp;
+        write_result_to_file("./iterative_camera_wo_prior.txt", iterative_result);
       }
 
       {
@@ -516,6 +532,7 @@ void run(const fs::path &sequence_path) {
               scale_error, gyro_bias_error, gyro_bias_error2, acc_bias_error, acc_bias_error2, gravity_error);
         } else
           LOG(ERROR) << "MQH method failed at " << timestamp;
+        write_result_to_file("./mqh_result.txt", mqh_result);
       }
 
       i = next(i_, trajectory.cend(), 0.5);

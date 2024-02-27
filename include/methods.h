@@ -76,6 +76,7 @@ void gyroscope_only(const InputType &input,
   bias_.setZero();
 
   ceres::Problem problem;
+  LOG(INFO) << "Computing cost and adding residual for each element in the vector input";
   for (unsigned i = 0; i < input.size(); ++i) {
     const Eigen::Isometry3d &T1 = input[i].T1;
     const Eigen::Isometry3d &T2 = input[i].T2;
@@ -165,7 +166,7 @@ void analytic_accelerometer(const InputType &input, ResultType &result,
     m += -2.*M_k.transpose()*Information*pi_k;
     Q +=  pi_k.transpose()*Information*pi_k;
   }
-
+  LOG(INFO) << " Analytic accelerometer : Building information from covariance";
   for (unsigned i = 1; i < input.size(); ++i) {
     //CHECK_EQ(input[i-1].t2, input[i].t1);
     const Eigen::Isometry3d &T1 = input[i-1].T1;
@@ -206,6 +207,7 @@ void analytic_accelerometer(const InputType &input, ResultType &result,
     Q +=  pi_k.transpose()*Information*pi_k;
   }
 
+  LOG(INFO)<<"Solving the accelerometer bias";
   // Solve
   Eigen::Matrix4d A = 2.*M.block<4, 4>(0, 0);
   //LOG(INFO) << StringPrintf("A: %.16f", A);
