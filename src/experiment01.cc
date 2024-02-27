@@ -253,7 +253,7 @@ void run(const fs::path &sequence_path) {
             << trajectory[n - 1].timestamp - imu_data[n1 - 1].timestamp;
 
   std::vector<unsigned> possible_nframes = {5, 10, 20, 50, 75};
-  possible_nframes = slice_vector(possible_nframes, 0, 0);
+  //possible_nframes = slice_vector(possible_nframes, 0, 0);
   LOG(INFO) << "size of nframes: " << possible_nframes.size();
   int preintegration_counter = 0;
   for (unsigned nframes : possible_nframes) {
@@ -426,7 +426,7 @@ void run(const fs::path &sequence_path) {
                                              acc_bias_error2, gravity_error);
           } else
             LOG(ERROR) << "Proposed method failed at " << timestamp;
-          methods[0].method_name = "proposed";
+          methods[0].method_name = "proposed_" + std::to_string(nframes);
           methods[0].results.push_back(proposed_result);
           write_result_to_txt("./proposed_result.txt", proposed_result);
         }
@@ -481,7 +481,7 @@ void run(const fs::path &sequence_path) {
           } else
             LOG(ERROR) << "Proposed w/o prior method failed at " << timestamp;
 
-          methods[1].method_name = "proposed_wo_prior";
+          methods[1].method_name = "proposed_wo_prior_"+ std::to_string(nframes);
           methods[1].results.push_back(proposed_result);
 
           write_result_to_txt("./result_proposed_prior.txt", proposed_result);
@@ -521,7 +521,7 @@ void run(const fs::path &sequence_path) {
                                               acc_bias_error2, gravity_error);
           } else
             LOG(ERROR) << "Iterative method failed at " << timestamp;
-          methods[2].method_name = "iterative";
+          methods[2].method_name = "iterative_"+ std::to_string(nframes);
           methods[2].results.push_back(iterative_result);
           write_result_to_txt("./result_iterative.txt", iterative_result);
         }
@@ -560,7 +560,7 @@ void run(const fs::path &sequence_path) {
                 acc_bias_error2, gravity_error);
           } else
             LOG(ERROR) << "Iterative w/o prior method failed at " << timestamp;
-          methods[3].method_name = "iterative_wo_prior";
+          methods[3].method_name = "iterative_wo_prior_"+ std::to_string(nframes);
           methods[3].results.push_back(iterative_result);
           write_result_to_txt("./result_iterative_prior.txt", iterative_result);
         }
@@ -613,7 +613,7 @@ void run(const fs::path &sequence_path) {
                                         acc_bias_error2, gravity_error);
           } else
             LOG(ERROR) << "MQH method failed at " << timestamp;
-          methods[4].method_name = "mqh";
+          methods[4].method_name = "mqh_"+ std::to_string(nframes);;
           methods[4].results.push_back(mqh_result);
           write_result_to_txt("./result_mqh.txt", mqh_result);
         }
