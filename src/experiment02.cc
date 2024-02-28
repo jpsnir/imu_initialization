@@ -1,8 +1,9 @@
 
 #include "experiment02.h"
+#include <unistd.h>
 
-
-void run(const fs::path &sequence_path) {
+void run(const fs::path &sequence_path)
+{
   std::string sequence_name = sequence_path.filename().string();
   if (sequence_name == ".")
     sequence_name = sequence_path.parent_path().filename().string();
@@ -46,13 +47,19 @@ void run(const fs::path &sequence_path) {
   double true_scale = std::numeric_limits<double>::quiet_NaN();
 
   double skipped = 0.;
+  unsigned iter = 0;
   Trajectory::const_iterator i_ = i;
-  while (i != trajectory.cend()) {
+  while (i != trajectory.cend())
+  {
+    LOG(INFO) << "****************************************";
+    usleep(10000);
+    LOG(INFO) << " ITERATION ID : " << iter++;
     Groundtruth::const_iterator gt =
         find_closest(groundtruth.cbegin(), groundtruth.cend(),
                      static_cast<io::timestamp_t>(i->timestamp * 1e9));
     CHECK(gt != groundtruth.cend());
-    if (gt == groundtruth.cend()) {
+    if (gt == groundtruth.cend())
+    {
       LOG(WARNING) << "Couldn't find groundtruth for "
                    << static_cast<io::timestamp_t>(i->timestamp * 1e9);
       break;
@@ -69,10 +76,13 @@ void run(const fs::path &sequence_path) {
     std::uint64_t imu_preintegration = 0;
 
     io::ImuData::const_iterator it = imu_data.cbegin();
-    for (unsigned n = 0; n < FLAGS_nframes; ++n) {
+    // define the input with camera poses and IMU readings.
+    for (unsigned n = 0; n < FLAGS_nframes; ++n)
+    {
       it = start_imu(it, imu_data.cend(),
                      static_cast<io::timestamp_t>(i->timestamp * 1e9));
-      if (it == imu_data.cend()) {
+      if (it == imu_data.cend())
+      {
         LOG(WARNING) << "Couldn't find IMU measurement at "
                      << static_cast<io::timestamp_t>(i->timestamp * 1e9);
         break;
@@ -81,7 +91,8 @@ void run(const fs::path &sequence_path) {
       // LOG(INFO) << static_cast<io::timestamp_t>(i->timestamp*1e9);
 
       Trajectory::const_iterator j = std::next(i, 1);
-      if (j == trajectory.cend()) {
+      if (j == trajectory.cend())
+      {
         LOG(WARNING) << "Couldn't find next frame for "
                      << static_cast<io::timestamp_t>(i->timestamp * 1e9);
         break;
@@ -91,7 +102,8 @@ void run(const fs::path &sequence_path) {
 
       gt = find_closest(groundtruth.cbegin(), groundtruth.cend(),
                         static_cast<io::timestamp_t>(j->timestamp * 1e9));
-      if (gt == groundtruth.cend()) {
+      if (gt == groundtruth.cend())
+      {
         LOG(WARNING) << "Couldn't find groundtruth for "
                      << static_cast<io::timestamp_t>(j->timestamp * 1e9);
         break;
@@ -107,7 +119,8 @@ void run(const fs::path &sequence_path) {
           std::make_shared<IMU::Preintegrated>(Eigen::Vector3d::Zero(),
                                                Eigen::Vector3d::Zero());
       while (it != imu_data.cend() &&
-             std::abs(it->timestamp * 1e-9 - j->timestamp) > 0.0025) {
+             std::abs(it->timestamp * 1e-9 - j->timestamp) > 0.0025)
+      {
         const Eigen::Vector3d w(it->w_x, it->w_y, it->w_z);
         const Eigen::Vector3d a(it->a_x, it->a_y, it->a_z);
         pInt->IntegrateNewMeasurement(w, a, dt);
@@ -117,7 +130,8 @@ void run(const fs::path &sequence_path) {
 
       imu_preintegration += timer.ElapsedNanoSeconds();
 
-      if (it == imu_data.cend()) {
+      if (it == imu_data.cend())
+      {
         LOG(WARNING) << "IMU stream ended!";
         break;
       }
@@ -129,7 +143,9 @@ void run(const fs::path &sequence_path) {
       i = j;
     }
 
-    if (input.size() < FLAGS_nframes) {
+    // check defined input
+    if (input.size() < FLAGS_nframes)
+    {
       LOG(INFO) << "I don't have " << FLAGS_nframes
                 << " frames. I think dataset ended...";
       break;
@@ -142,14 +158,17 @@ void run(const fs::path &sequence_path) {
     const double avgA_error =
         std::abs(avgA.norm() - IMU::GRAVITY_MAGNITUDE) / IMU::GRAVITY_MAGNITUDE;
     // LOG(INFO) << "Average acceleration: " << 100.*avgA_error;
-    if (avgA_error > 5e-3) {
+    if (avgA_error > 5e-3)
+    {
       // LOG(INFO) << "Average preintegration time: " << imu_integration /
       // count; imu_integration = 0; count = 0;
 
       std::uint64_t timestamp = input[0].t1;
       // double initialization_time = i->timestamp - i_->timestamp;
 
-      Eigen::Isometry3d T = compute_scale(input, groundtruth, true_scale);
+      // Eigen::Isometry3d T = compute_scale(input, groundtruth, true_scale);
+      Eigen::Isometry3d T = Eigen::Isometry3d::Identity();
+      true_scale = 1;
       // LOG(INFO) << StringPrintf("True scale: %.6f", true_scale);
 
       // Method 1: Proposed solution
@@ -173,7 +192,8 @@ void run(const fs::path &sequence_path) {
         proposed_result.bias_a = accelerometer_result.bias_a;
         proposed_result.gravity = accelerometer_result.gravity;
 
-        if (proposed_result.success) {
+        if (proposed_result.success)
+        {
           const double scale_error =
               100. * std::abs(proposed_result.scale - true_scale) / true_scale;
           const double gyro_bias_error =
@@ -202,14 +222,16 @@ void run(const fs::path &sequence_path) {
               imu_preintegration + proposed_result.solve_ns, scale_error,
               gyro_bias_error, gyro_bias_error2, acc_bias_error,
               acc_bias_error2, gravity_error);
-        } else
+        }
+        else
           LOG(ERROR) << "Proposed method failed at " << timestamp;
-        methods[0].method_name = "proposed_cam"+ std::to_string(FLAGS_nframes);
+        methods[0].method_name = "proposed_cam" + std::to_string(FLAGS_nframes);
         methods[0].results.push_back(proposed_result);
-        write_result_to_txt_file("./proposed_camera_result.txt",
-                                 proposed_result);
+        // write_result_to_txt_file("./proposed_camera_result.txt",
+        //                          proposed_result);
       }
 
+      // Method 2: Proposed without prior
       {
         ResultType gyroscope_result;
         gyroscope_only(input, gyroscope_result, Tcb.linear());
@@ -230,7 +252,8 @@ void run(const fs::path &sequence_path) {
         proposed_result.bias_a = accelerometer_result.bias_a;
         proposed_result.gravity = accelerometer_result.gravity;
 
-        if (proposed_result.success) {
+        if (proposed_result.success)
+        {
           const double scale_error =
               100. * std::abs(proposed_result.scale - true_scale) / true_scale;
           const double gyro_bias_error =
@@ -259,34 +282,39 @@ void run(const fs::path &sequence_path) {
               imu_preintegration + proposed_result.solve_ns, scale_error,
               gyro_bias_error, gyro_bias_error2, acc_bias_error,
               acc_bias_error2, gravity_error);
-        } else
+        }
+        else
           LOG(ERROR) << "Proposed w/o prior method failed at " << timestamp;
-        methods[1].method_name = "proposed_wo_prior_cam"+ std::to_string(FLAGS_nframes);
+        methods[1].method_name = "proposed_wo_prior_cam" + std::to_string(FLAGS_nframes);
         methods[1].results.push_back(proposed_result);
-        write_result_to_txt_file("./proposed_camera_result_wo_prior.txt",
-                                 proposed_result);
+        // write_result_to_txt_file("./proposed_camera_result_wo_prior.txt",
+        //                          proposed_result);
       }
 
+      // Method 3: Iterative
       {
         ResultType iterative_result;
         double min_cost = std::numeric_limits<double>::max();
 
         std::int64_t max_solve_time = 0;
         std::vector<double> scale_values = {1., 4., 16.};
-        for (const double scale : scale_values) {
+        for (const double scale : scale_values)
+        {
           double cost;
           ResultType result;
           // LOG(INFO) << "Initializing with scale " << scale;
           iterative(input, result, scale, Tcb, &cost);
           max_solve_time = std::max(result.solve_ns, max_solve_time);
-          if (cost < min_cost) {
+          if (cost < min_cost)
+          {
             iterative_result = result;
             min_cost = cost;
           }
         }
         iterative_result.solve_ns = max_solve_time;
 
-        if (iterative_result.success) {
+        if (iterative_result.success)
+        {
           const double scale_error =
               100. * std::abs(iterative_result.scale - true_scale) / true_scale;
           const double gyro_bias_error =
@@ -315,35 +343,40 @@ void run(const fs::path &sequence_path) {
               imu_preintegration + iterative_result.solve_ns, scale_error,
               gyro_bias_error, gyro_bias_error2, acc_bias_error,
               acc_bias_error2, gravity_error);
-        } else
+        }
+        else
           LOG(ERROR) << "Iterative method failed at " << timestamp;
-        methods[2].method_name = "iterative_cam"+ std::to_string(FLAGS_nframes);
+        methods[2].method_name = "iterative_cam" + std::to_string(FLAGS_nframes);
         methods[2].results.push_back(iterative_result);
 
-        write_result_to_txt_file("./iterative_camera_result.txt",
-                                 iterative_result);
+        // write_result_to_txt_file("./iterative_camera_result.txt",
+        //                          iterative_result);
       }
 
+      // Method 4: Iterative without prior
       {
         ResultType iterative_result;
         double min_cost = std::numeric_limits<double>::max();
 
         std::int64_t max_solve_time = 0;
         std::vector<double> scale_values = {1., 4., 16.};
-        for (const double scale : scale_values) {
+        for (const double scale : scale_values)
+        {
           double cost;
           ResultType result;
           // LOG(INFO) << "Initializing with scale " << scale;
           iterative(input, result, scale, Tcb, &cost, 0.0);
           max_solve_time = std::max(result.solve_ns, max_solve_time);
-          if (cost < min_cost) {
+          if (cost < min_cost)
+          {
             iterative_result = result;
             min_cost = cost;
           }
         }
         iterative_result.solve_ns = max_solve_time;
 
-        if (iterative_result.success) {
+        if (iterative_result.success)
+        {
           const double scale_error =
               100. * std::abs(iterative_result.scale - true_scale) / true_scale;
           const double gyro_bias_error =
@@ -372,15 +405,17 @@ void run(const fs::path &sequence_path) {
               imu_preintegration + iterative_result.solve_ns, scale_error,
               gyro_bias_error, gyro_bias_error2, acc_bias_error,
               acc_bias_error2, gravity_error);
-        } else
+        }
+        else
           LOG(ERROR) << "Iterative w/o prior method failed at " << timestamp;
-        methods[3].method_name = "iterative_wo_prior_cam"+ std::to_string(FLAGS_nframes);
+        methods[3].method_name = "iterative_wo_prior_cam" + std::to_string(FLAGS_nframes);
         methods[3].results.push_back(iterative_result);
 
-        write_result_to_txt_file("./iterative_camera_wo_prior.txt",
-                                 iterative_result);
+        // write_result_to_txt_file("./iterative_camera_wo_prior.txt",
+        //                          iterative_result);
       }
 
+      // Method 5: MQH
       {
         ResultType gyroscope_result;
         gyroscope_only(input, gyroscope_result, Tcb.linear(), false);
@@ -400,7 +435,8 @@ void run(const fs::path &sequence_path) {
         mqh_result.bias_a = accelerometer_result.bias_a;
         mqh_result.gravity = accelerometer_result.gravity;
 
-        if (mqh_result.success) {
+        if (mqh_result.success)
+        {
           const double scale_error = 100. * std::abs(mqh_result.scale - 1.);
           const double gyro_bias_error =
               100. * std::abs(mqh_result.bias_g.norm() - avgBg.norm()) /
@@ -427,18 +463,21 @@ void run(const fs::path &sequence_path) {
                                       scale_error, gyro_bias_error,
                                       gyro_bias_error2, acc_bias_error,
                                       acc_bias_error2, gravity_error);
-        } else
+        }
+        else
           LOG(ERROR) << "MQH method failed at " << timestamp;
-        methods[4].method_name = "mqh_camera"+ std::to_string(FLAGS_nframes);
+        methods[4].method_name = "mqh_camera" + std::to_string(FLAGS_nframes);
         methods[4].results.push_back(mqh_result);
 
-        write_result_to_txt_file("./mqh_result.txt", mqh_result);
+        // write_result_to_txt_file("./mqh_result.txt", mqh_result);
       }
 
       i = next(i_, trajectory.cend(), 0.5);
       i_ = i;
       skipped = 0.;
-    } else { // next attempt
+    }
+    else
+    { // next attempt
       skipped += 0.5;
       i = next(i_, trajectory.cend(), skipped); // 0.5s
     }
@@ -475,7 +514,8 @@ void run(const fs::path &sequence_path) {
   LOG(INFO) << "done." << std::endl;
 }
 
-int main(int argc, char *argv[]) {
+int main(int argc, char *argv[])
+{
 
   Eigen::Matrix3d Rcb;
   Rcb << 0.0148655429818000, 0.999557249008000, -0.0257744366974000,
@@ -488,7 +528,8 @@ int main(int argc, char *argv[]) {
   Tcb.translation() = tcb;
 
   // Handle help flag
-  if (args::HelpRequired(argc, argv)) {
+  if (args::HelpRequired(argc, argv))
+  {
     args::ShowHelp();
     return 0;
   }
@@ -501,7 +542,8 @@ int main(int argc, char *argv[]) {
   google::InitGoogleLogging(argv[0]);
 
   // Check number of args
-  if (argc - 1 != args::NumArgs()) {
+  if (argc - 1 != args::NumArgs())
+  {
     args::ShowHelp();
     return -1;
   }

@@ -50,6 +50,6 @@ target_link_libraries(experiment01c ${Boost_LIBRARIES} ${CERES_LIBRARIES} ${GFLA
 add_executable(experiment02 src/experiment02.cc src/imu_preintegration.cc src/polynomial.cc src/so3.cc src/string.cc src/timer.cc)
 target_link_libraries(experiment02 ${Boost_LIBRARIES} ${CERES_LIBRARIES} ${GFLAGS_LIBRARY} ${GLOG_LIBRARIES})
 
-#add_executable(test_experiment02 ./tests/test_experiment02.cpp)
-#target_link_libraries(test_experiment02 ${GTest_LIBRARIES})
-#target_include_directories(test_experiment02 PRIVATE ${GTEST_INCLUDE_DIRS})
+add_executable(test_experiment02 ./tests/test_experiment02.cpp src/imu_preintegration.cc src/polynomial.cc src/so3.cc src/string.cc src/timer.cc)
+target_link_libraries(test_experiment02 GTest::gtest ${Boost_LIBRARIES} ${CERES_LIBRARIES} ${GFLAGS_LIBRARY} ${GLOG_LIBRARIES})
+target_include_directories(test_experiment02 PRIVATE ${GTEST_INCLUDE_DIRS})
