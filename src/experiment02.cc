@@ -1,6 +1,8 @@
 
 #include "experiment02.h"
 #include <unistd.h>
+DEFINE_uint32(camera_step_size, 1, "camera step size in the estimated keyframe trajectory");
+DEFINE_double(gap_time, 0.5, "gap time for search keyframes from current timestamp - seconds");
 
 void run(const fs::path &sequence_path)
 {
@@ -10,33 +12,23 @@ void run(const fs::path &sequence_path)
 
   LOG(INFO) << "Running experiment: " << sequence_name;
   LOG(INFO) << StringPrintf("With %d keyframes", FLAGS_nframes);
-  char c;
-  cin >> c;
   fs::path trajectory_path = sequence_path / "KeyFrameTrajectory.txt";
-  CHECK(fs::is_regular_file(trajectory_path))
-      << "Path not found: " << trajectory_path.string();
+  CHECK(fs::is_regular_file(trajectory_path)) << "Path not found: " << trajectory_path.string();
 
-  fs::path groundtruth_path =
-      sequence_path / "state_groundtruth_estimate0" / "data.csv";
-  CHECK(fs::is_regular_file(groundtruth_path))
-      << "Path not found: " << groundtruth_path.string();
+  fs::path groundtruth_path = sequence_path / "state_groundtruth_estimate0" / "data.csv";
+  CHECK(fs::is_regular_file(groundtruth_path)) << "Path not found: " << groundtruth_path.string();
 
   fs::path data_path = sequence_path / "imu0" / "data.csv";
-  CHECK(fs::is_regular_file(data_path))
-      << "Path not found: " << data_path.string();
+  CHECK(fs::is_regular_file(data_path)) << "Path not found: " << data_path.string();
 
   Trajectory trajectory_ = read_file_TUM(trajectory_path.string());
-  Groundtruth groundtruth =
-      io::read_file<Groundtruth::value_type>(groundtruth_path.string());
-  io::ImuData imu_data =
-      io::read_file<io::ImuData::value_type>(data_path.string());
+  Groundtruth groundtruth = io::read_file<Groundtruth::value_type>(groundtruth_path.string());
+  io::ImuData imu_data = io::read_file<io::ImuData::value_type>(data_path.string());
 
   // Discard first keyframe
-  Trajectory trajectory(std::next(trajectory_.cbegin(), skip_time), trajectory_.cend());
-
+  Trajectory trajectory(std::next(trajectory_.cbegin(), gap_time), trajectory_.cend());
   Trajectory::const_iterator i = start(trajectory, imu_data);
-  LOG(INFO) << "Starting at "
-            << static_cast<io::timestamp_t>(i->timestamp * 1e9);
+  LOG(INFO) << "Starting at " << static_cast<io::timestamp_t>(i->timestamp * 1e9);
 
   std::vector<evaluation_t> proposed_evaluation;
   std::vector<evaluation_t> proposed_noprior_evaluation;
@@ -52,70 +44,47 @@ void run(const fs::path &sequence_path)
   cout << std::fixed << std::setprecision(10);
   while (i != trajectory.cend())
   {
-    LOG(INFO) << "****************************************";
-    LOG(INFO) << " ITERATION ID : " << iter++;
-    usleep(100000);
-    // Groundtruth::const_iterator gt;
-    Groundtruth::const_iterator gt =
-        find_closest(groundtruth.cbegin(), groundtruth.cend(),
-                     static_cast<io::timestamp_t>(i->timestamp * 1e9));
-
+    LOG(INFO) << "******** ITERATION ID: " << iter++ << "**************";
+    Groundtruth::const_iterator gt = find_closest(groundtruth.cbegin(), groundtruth.cend(),
+                                                  static_cast<io::timestamp_t>(i->timestamp * 1e9));
     if (gt == groundtruth.cend())
     {
-      LOG(WARNING) << "Couldn't find groundtruth for "
-                   << static_cast<io::timestamp_t>(i->timestamp * 1e9);
+      LOG(WARNING) << "Couldn't find groundtruth for " << static_cast<io::timestamp_t>(i->timestamp * 1e9);
       LOG(INFO) << "breaking at: " << i->timestamp * 1e9 << ":" << i_->timestamp * 1e9;
       break;
     }
     CHECK(gt != groundtruth.cend());
-
     InputType input;
-
-    // TODO
     Eigen::Vector3d avgBg = Eigen::Vector3d(gt->bw_x, gt->bw_y, gt->bw_z);
     Eigen::Vector3d avgBa = Eigen::Vector3d(gt->ba_x, gt->ba_y, gt->ba_z);
-    // Eigen::Vector3d avgBg = Eigen::Vector3d::Zero();
-    // Eigen::Vector3d avgBa = Eigen::Vector3d::Zero();
-
     Eigen::Vector3d avgA;
     avgA.setZero();
-
     std::uint64_t imu_preintegration = 0;
-
     io::ImuData::const_iterator it = imu_data.cbegin();
-    // define the input with camera poses and IMU readings.
 
+    // define the input with camera poses and IMU readings.
     for (unsigned n = 0; n < FLAGS_nframes; ++n)
     {
-      it = start_imu(it, imu_data.cend(),
-                     static_cast<io::timestamp_t>(i->timestamp * 1e9));
+      it = start_imu(it, imu_data.cend(), static_cast<io::timestamp_t>(i->timestamp * 1e9));
       if (it == imu_data.cend())
       {
-        LOG(WARNING) << "Couldn't find IMU measurement at "
-                     << static_cast<io::timestamp_t>(i->timestamp * 1e9);
+        LOG(WARNING) << "Couldn't find IMU measurement at " << static_cast<io::timestamp_t>(i->timestamp * 1e9);
         break;
       }
-
       Trajectory::const_iterator j = std::next(i, c_step_size);
-
       if (j == trajectory.cend())
       {
         LOG(WARNING) << "Couldn't find next frame for "
                      << static_cast<io::timestamp_t>(i->timestamp * 1e9);
         break;
       }
-      // LOG(INFO) << "Next frame at " <<
-      // static_cast<io::timestamp_t>(j->timestamp*1e9);
-
-      gt = find_closest(groundtruth.cbegin(), groundtruth.cend(),
-                        static_cast<io::timestamp_t>(j->timestamp * 1e9));
+      gt = find_closest(groundtruth.cbegin(), groundtruth.cend(), static_cast<io::timestamp_t>(j->timestamp * 1e9));
       if (gt == groundtruth.cend())
       {
         LOG(WARNING) << "Couldn't find groundtruth for "
                      << static_cast<io::timestamp_t>(j->timestamp * 1e9);
         break;
       }
-
       avgBg += Eigen::Vector3d(gt->bw_x, gt->bw_y, gt->bw_z);
       avgBa += Eigen::Vector3d(gt->ba_x, gt->ba_y, gt->ba_z);
 
@@ -133,8 +102,6 @@ void run(const fs::path &sequence_path)
         pInt->IntegrateNewMeasurement(w, a, dt);
         std::advance(it, 1);
       }
-      // LOG(INFO) << "IMU stopped at " << it->timestamp;
-
       imu_preintegration += timer.ElapsedNanoSeconds();
 
       if (it == imu_data.cend())
@@ -144,16 +111,15 @@ void run(const fs::path &sequence_path)
       }
 
       avgA += pInt->dV / pInt->dT;
-
-      input.emplace_back(
-          i->pose, static_cast<io::timestamp_t>(i->timestamp * 1e9), j->pose,
-          static_cast<io::timestamp_t>(j->timestamp * 1e9), pInt);
+      input.emplace_back(i->pose,
+                         static_cast<io::timestamp_t>(i->timestamp * 1e9),
+                         j->pose,
+                         static_cast<io::timestamp_t>(j->timestamp * 1e9),
+                         pInt);
       i = j;
     }
 
-    LOG(INFO) << " Computing scale, biases and gravity in : " << std::fixed << std::setprecision(10)
-              << i_->timestamp << ":" << i->timestamp;
-    LOG(INFO) << ": Time difference = " << i->timestamp - i_->timestamp << ": counter = " << iter;
+    LOG(INFO) << "Time difference = " << i->timestamp - i_->timestamp << " : counter = " << iter;
 
     // check defined input
     if (input.size() < FLAGS_nframes)
@@ -162,38 +128,39 @@ void run(const fs::path &sequence_path)
                 << " frames. I think dataset ended...";
       break;
     }
-
     avgBg /= static_cast<double>(FLAGS_nframes + 1);
     avgBa /= static_cast<double>(FLAGS_nframes + 1);
-
     avgA /= static_cast<double>(FLAGS_nframes);
-    const double avgA_error =
-        std::abs(avgA.norm() - IMU::GRAVITY_MAGNITUDE) / IMU::GRAVITY_MAGNITUDE;
+
+    const double avgA_error = std::abs(avgA.norm() - IMU::GRAVITY_MAGNITUDE) / IMU::GRAVITY_MAGNITUDE;
     LOG(INFO) << "Average acceleration: " << avgA_error;
     if (avgA_error > 5e-3)
     {
       std::uint64_t timestamp = input[0].t1;
-      // double initialization_time = i->timestamp - i_->timestamp;
+ 
+      Eigen::Isometry3d T = compute_scale(input, groundtruth, true_scale);
+      //Eigen::Isometry3d T = Eigen::Isometry3d::Identity();
+      //true_scale = 1;
 
-      // TODO
-      // Eigen::Isometry3d T = compute_scale(input, groundtruth, true_scale);
-      Eigen::Isometry3d T = Eigen::Isometry3d::Identity();
-      true_scale = 1;
-      // LOG(INFO) << StringPrintf("True scale: %.6f", true_scale);
+      if (true_scale == -1)
+        continue;
 
       // Method 1: Proposed solution
       {
         ResultType gyroscope_result;
-        gyroscope_only(input, gyroscope_result, Tcb.linear());
+        gyroscope_only(input,
+                       gyroscope_result,
+                       Tcb.linear());
 
         ResultType accelerometer_result;
-        analytic_accelerometer(input, accelerometer_result,
-                               gyroscope_result.bias_g, Eigen::Vector3d::Zero(),
+        analytic_accelerometer(input,
+                               accelerometer_result,
+                               gyroscope_result.bias_g,
+                               Eigen::Vector3d::Zero(),
                                Tcb, 1e5);
 
         ResultType proposed_result;
-        proposed_result.success =
-            gyroscope_result.success & accelerometer_result.success;
+        proposed_result.success = gyroscope_result.success & accelerometer_result.success;
         proposed_result.solve_ns = gyroscope_result.solve_ns +
                                    accelerometer_result.solve_ns +
                                    accelerometer_result.velocities_ns;
@@ -204,37 +171,30 @@ void run(const fs::path &sequence_path)
 
         if (proposed_result.success)
         {
-          const double scale_error =
-              100. * std::abs(proposed_result.scale - true_scale) / true_scale;
-          const double gyro_bias_error =
-              100. * std::abs(proposed_result.bias_g.norm() - avgBg.norm()) /
-              avgBg.norm();
-          const double gyro_bias_error2 =
-              180. *
-              std::acos(
-                  proposed_result.bias_g.normalized().dot(avgBg.normalized())) /
-              EIGEN_PI;
-          const double acc_bias_error =
-              100. * std::abs(proposed_result.bias_a.norm() - avgBa.norm()) /
-              avgBa.norm();
-          const double acc_bias_error2 =
-              180. *
-              std::acos(
-                  proposed_result.bias_a.normalized().dot(avgBa.normalized())) /
-              EIGEN_PI;
-          const double gravity_error =
-              180. *
-              std::acos((T.linear() * proposed_result.gravity)
-                            .normalized()
-                            .dot(IMU::GRAVITY_VECTOR.normalized())) /
-              EIGEN_PI;
-          proposed_evaluation.emplace_back(
-              imu_preintegration + proposed_result.solve_ns, scale_error,
-              gyro_bias_error, gyro_bias_error2, acc_bias_error,
-              acc_bias_error2, gravity_error);
+          const double scale_error = 100. * std::abs(proposed_result.scale - true_scale) / true_scale;
+          const double gyro_bias_error = 100. * std::abs(proposed_result.bias_g.norm() - avgBg.norm()) /
+                                         avgBg.norm();
+          const double gyro_bias_error2 = 180. *
+                                          std::acos(
+                                              proposed_result.bias_g.normalized().dot(avgBg.normalized())) /
+                                          EIGEN_PI;
+          const double acc_bias_error = 100. * std::abs(proposed_result.bias_a.norm() - avgBa.norm()) /
+                                        avgBa.norm();
+          const double acc_bias_error2 = 180. *
+                                         std::acos(
+                                             proposed_result.bias_a.normalized().dot(avgBa.normalized())) /
+                                         EIGEN_PI;
+          const double gravity_error = 180. *
+                                       std::acos(
+                                           (T.linear() * proposed_result.gravity).normalized().dot(IMU::GRAVITY_VECTOR.normalized())) /
+                                       EIGEN_PI;
+          proposed_evaluation.emplace_back(imu_preintegration + proposed_result.solve_ns, 
+                                           scale_error, gyro_bias_error, gyro_bias_error2, acc_bias_error,
+                                           acc_bias_error2, gravity_error);
         }
         else
           LOG(ERROR) << "Proposed method failed at " << timestamp;
+
         methods[0].method_name = "proposed_cam" + std::to_string(FLAGS_nframes);
         methods[0].results.push_back(proposed_result);
         // write_result_to_txt_file("./proposed_camera_result.txt",
@@ -265,34 +225,27 @@ void run(const fs::path &sequence_path)
 
         if (proposed_result.success)
         {
-          const double scale_error =
-              100. * std::abs(proposed_result.scale - true_scale) / true_scale;
-          const double gyro_bias_error =
-              100. * std::abs(proposed_result.bias_g.norm() - avgBg.norm()) /
-              avgBg.norm();
-          const double gyro_bias_error2 =
-              180. *
-              std::acos(
-                  proposed_result.bias_g.normalized().dot(avgBg.normalized())) /
-              EIGEN_PI;
-          const double acc_bias_error =
-              100. * std::abs(proposed_result.bias_a.norm() - avgBa.norm()) /
-              avgBa.norm();
-          const double acc_bias_error2 =
-              180. *
-              std::acos(
-                  proposed_result.bias_a.normalized().dot(avgBa.normalized())) /
-              EIGEN_PI;
-          const double gravity_error =
-              180. *
-              std::acos((T.linear() * proposed_result.gravity)
-                            .normalized()
-                            .dot(IMU::GRAVITY_VECTOR.normalized())) /
-              EIGEN_PI;
-          proposed_noprior_evaluation.emplace_back(
-              imu_preintegration + proposed_result.solve_ns, scale_error,
-              gyro_bias_error, gyro_bias_error2, acc_bias_error,
-              acc_bias_error2, gravity_error);
+          const double scale_error = 100. * std::abs(proposed_result.scale - true_scale) / true_scale;
+          const double gyro_bias_error = 100. * std::abs(proposed_result.bias_g.norm() - avgBg.norm()) /
+                                         avgBg.norm();
+          const double gyro_bias_error2 = 180. *
+                                          std::acos(
+                                              proposed_result.bias_g.normalized().dot(avgBg.normalized())) /
+                                          EIGEN_PI;
+          const double acc_bias_error = 100. * std::abs(proposed_result.bias_a.norm() - avgBa.norm()) /
+                                        avgBa.norm();
+          const double acc_bias_error2 = 180. *
+                                         std::acos(
+                                             proposed_result.bias_a.normalized().dot(avgBa.normalized())) /
+                                         EIGEN_PI;
+          const double gravity_error = 180. *
+                                       std::acos((T.linear() * proposed_result.gravity)
+                                                     .normalized()
+                                                     .dot(IMU::GRAVITY_VECTOR.normalized())) /
+                                       EIGEN_PI;
+          proposed_noprior_evaluation.emplace_back(imu_preintegration + proposed_result.solve_ns, scale_error,
+                                                   gyro_bias_error, gyro_bias_error2, acc_bias_error,
+                                                   acc_bias_error2, gravity_error);
         }
         else
           LOG(ERROR) << "Proposed w/o prior method failed at " << timestamp;
@@ -327,34 +280,27 @@ void run(const fs::path &sequence_path)
 
         if (iterative_result.success)
         {
-          const double scale_error =
-              100. * std::abs(iterative_result.scale - true_scale) / true_scale;
-          const double gyro_bias_error =
-              100. * std::abs(iterative_result.bias_g.norm() - avgBg.norm()) /
-              avgBg.norm();
-          const double gyro_bias_error2 =
-              180. *
-              std::acos(iterative_result.bias_g.normalized().dot(
-                  avgBg.normalized())) /
-              EIGEN_PI;
-          const double acc_bias_error =
-              100. * std::abs(iterative_result.bias_a.norm() - avgBa.norm()) /
-              avgBa.norm();
-          const double acc_bias_error2 =
-              180. *
-              std::acos(iterative_result.bias_a.normalized().dot(
-                  avgBa.normalized())) /
-              EIGEN_PI;
-          const double gravity_error =
-              180. *
-              std::acos((T.linear() * iterative_result.gravity)
-                            .normalized()
-                            .dot(IMU::GRAVITY_VECTOR.normalized())) /
-              EIGEN_PI;
-          iterative_evaluation.emplace_back(
-              imu_preintegration + iterative_result.solve_ns, scale_error,
-              gyro_bias_error, gyro_bias_error2, acc_bias_error,
-              acc_bias_error2, gravity_error);
+          const double scale_error = 100. * std::abs(iterative_result.scale - true_scale) / true_scale;
+          const double gyro_bias_error = 100. * std::abs(iterative_result.bias_g.norm() - avgBg.norm()) /
+                                         avgBg.norm();
+          const double gyro_bias_error2 = 180. *
+                                          std::acos(iterative_result.bias_g.normalized().dot(
+                                              avgBg.normalized())) /
+                                          EIGEN_PI;
+          const double acc_bias_error = 100. * std::abs(iterative_result.bias_a.norm() - avgBa.norm()) /
+                                        avgBa.norm();
+          const double acc_bias_error2 = 180. *
+                                         std::acos(iterative_result.bias_a.normalized().dot(
+                                             avgBa.normalized())) /
+                                         EIGEN_PI;
+          const double gravity_error = 180. *
+                                       std::acos((T.linear() * iterative_result.gravity)
+                                                     .normalized()
+                                                     .dot(IMU::GRAVITY_VECTOR.normalized())) /
+                                       EIGEN_PI;
+          iterative_evaluation.emplace_back(imu_preintegration + iterative_result.solve_ns, scale_error,
+                                            gyro_bias_error, gyro_bias_error2, acc_bias_error,
+                                            acc_bias_error2, gravity_error);
         }
         else
           LOG(ERROR) << "Iterative method failed at " << timestamp;
@@ -389,34 +335,28 @@ void run(const fs::path &sequence_path)
 
         if (iterative_result.success)
         {
-          const double scale_error =
-              100. * std::abs(iterative_result.scale - true_scale) / true_scale;
+          const double scale_error = 100. * std::abs(iterative_result.scale - true_scale) / true_scale;
           const double gyro_bias_error =
               100. * std::abs(iterative_result.bias_g.norm() - avgBg.norm()) /
               avgBg.norm();
-          const double gyro_bias_error2 =
-              180. *
-              std::acos(iterative_result.bias_g.normalized().dot(
-                  avgBg.normalized())) /
-              EIGEN_PI;
-          const double acc_bias_error =
-              100. * std::abs(iterative_result.bias_a.norm() - avgBa.norm()) /
-              avgBa.norm();
-          const double acc_bias_error2 =
-              180. *
-              std::acos(iterative_result.bias_a.normalized().dot(
-                  avgBa.normalized())) /
-              EIGEN_PI;
-          const double gravity_error =
-              180. *
-              std::acos((T.linear() * iterative_result.gravity)
-                            .normalized()
-                            .dot(IMU::GRAVITY_VECTOR.normalized())) /
-              EIGEN_PI;
-          iterative_noprior_evaluation.emplace_back(
-              imu_preintegration + iterative_result.solve_ns, scale_error,
-              gyro_bias_error, gyro_bias_error2, acc_bias_error,
-              acc_bias_error2, gravity_error);
+          const double gyro_bias_error2 = 180. *
+                                          std::acos(iterative_result.bias_g.normalized().dot(
+                                              avgBg.normalized())) /
+                                          EIGEN_PI;
+          const double acc_bias_error = 100. * std::abs(iterative_result.bias_a.norm() - avgBa.norm()) /
+                                        avgBa.norm();
+          const double acc_bias_error2 = 180. *
+                                         std::acos(iterative_result.bias_a.normalized().dot(
+                                             avgBa.normalized())) /
+                                         EIGEN_PI;
+          const double gravity_error = 180. *
+                                       std::acos((T.linear() * iterative_result.gravity)
+                                                     .normalized()
+                                                     .dot(IMU::GRAVITY_VECTOR.normalized())) /
+                                       EIGEN_PI;
+          iterative_noprior_evaluation.emplace_back(imu_preintegration + iterative_result.solve_ns, scale_error,
+                                                    gyro_bias_error, gyro_bias_error2, acc_bias_error,
+                                                    acc_bias_error2, gravity_error);
         }
         else
           LOG(ERROR) << "Iterative w/o prior method failed at " << timestamp;
@@ -451,27 +391,22 @@ void run(const fs::path &sequence_path)
         if (mqh_result.success)
         {
           const double scale_error = 100. * std::abs(mqh_result.scale - 1.);
-          const double gyro_bias_error =
-              100. * std::abs(mqh_result.bias_g.norm() - avgBg.norm()) /
-              avgBg.norm();
-          const double gyro_bias_error2 =
-              180. *
-              std::acos(
-                  mqh_result.bias_g.normalized().dot(avgBg.normalized())) /
-              EIGEN_PI;
-          const double acc_bias_error =
-              100. * std::abs(mqh_result.bias_a.norm() - avgBa.norm()) /
-              avgBa.norm();
-          const double acc_bias_error2 =
-              180. *
-              std::acos(
-                  mqh_result.bias_a.normalized().dot(avgBa.normalized())) /
-              EIGEN_PI;
-          const double gravity_error =
-              180. *
-              std::acos(mqh_result.gravity.normalized().dot(
-                  IMU::GRAVITY_VECTOR.normalized())) /
-              EIGEN_PI;
+          const double gyro_bias_error = 100. * std::abs(mqh_result.bias_g.norm() - avgBg.norm()) /
+                                         avgBg.norm();
+          const double gyro_bias_error2 = 180. *
+                                          std::acos(
+                                              mqh_result.bias_g.normalized().dot(avgBg.normalized())) /
+                                          EIGEN_PI;
+          const double acc_bias_error = 100. * std::abs(mqh_result.bias_a.norm() - avgBa.norm()) /
+                                        avgBa.norm();
+          const double acc_bias_error2 = 180. *
+                                         std::acos(
+                                             mqh_result.bias_a.normalized().dot(avgBa.normalized())) /
+                                         EIGEN_PI;
+          const double gravity_error = 180. *
+                                       std::acos(mqh_result.gravity.normalized().dot(
+                                           IMU::GRAVITY_VECTOR.normalized())) /
+                                       EIGEN_PI;
           mqh_evaluation.emplace_back(imu_preintegration + mqh_result.solve_ns,
                                       scale_error, gyro_bias_error,
                                       gyro_bias_error2, acc_bias_error,
@@ -486,13 +421,20 @@ void run(const fs::path &sequence_path)
         LOG(INFO) << " Method 4 completed";
       }
 
-      i = next(i_, trajectory.cend(), skip_time);
+      i = next(i_, trajectory.cend(), gap_time);
       i_ = i;
+      if (i->timestamp == i_->timestamp){
+        LOG(INFO) << " No new frames are being selected in skip time = " << gap_time;
+        LOG(INFO) << " Current keyframe timestamp: " << i->timestamp;
+        i = std::next(i, c_step_size);
+        LOG(INFO) << " Jumping to next keyframe : " << i->timestamp;
+      }
       skipped = 0.;
     }
     else
     { // next attempt
-      skipped += skip_time;
+      LOG(INFO) << "Average acceleration error nearly zero. Skipping frame.";
+      skipped += gap_time;
       i = next(i_, trajectory.cend(), skipped); // 0.5s
     }
   }
@@ -550,9 +492,12 @@ int main(int argc, char *argv[])
 
   // Parse input flags
   args::ParseCommandLineNonHelpFlags(&argc, &argv, true);
-
+  gflags::ParseCommandLineFlags(&argc, &argv, true);
   FLAGS_log_dir = FLAGS_logs_dir;
   FLAGS_stderrthreshold = 0;
+  
+
+
   google::InitGoogleLogging(argv[0]);
 
   // Check number of args
@@ -571,6 +516,11 @@ int main(int argc, char *argv[])
 
   IMU::Sigma.block<3, 3>(0, 0) = rate * ng * ng * Eigen::Matrix3d::Identity();
   IMU::Sigma.block<3, 3>(3, 3) = rate * na * na * Eigen::Matrix3d::Identity();
+  gap_time = FLAGS_gap_time;
+  c_step_size = FLAGS_camera_step_size;
+  LOG(INFO) << "Gap time : " << gap_time;
+  LOG(INFO) << "camera keyframe step size: " << c_step_size;
+
 
   run(ARGS_dataset_dir);
 
