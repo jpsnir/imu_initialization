@@ -40,12 +40,18 @@ using Trajectory = std::vector<io::trajectory_t<double>>;
 using Groundtruth = std::vector<io::state_t>;
 using ImuData = io::ImuData;
 
+
+// algorithm tuning parameters
+const double skip_time = 0.5; //default 0.5
+const unsigned c_step_size = 1;
+
 // IMU parameters
 // EuRoC
 const double rate = 200.;
 const double dt = 1. / rate;
 const double ng = 1.7e-4;
 const double na = 2.e-3;
+
 
 Eigen::Isometry3d Tcb;
 

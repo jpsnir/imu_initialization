@@ -32,7 +32,7 @@ void run(const fs::path &sequence_path)
       io::read_file<io::ImuData::value_type>(data_path.string());
 
   // Discard first keyframe
-  Trajectory trajectory(std::next(trajectory_.cbegin(), 1), trajectory_.cend());
+  Trajectory trajectory(std::next(trajectory_.cbegin(), skip_time), trajectory_.cend());
 
   Trajectory::const_iterator i = start(trajectory, imu_data);
   LOG(INFO) << "Starting at "
@@ -49,26 +49,33 @@ void run(const fs::path &sequence_path)
   double skipped = 0.;
   unsigned iter = 0;
   Trajectory::const_iterator i_ = i;
+  cout << std::fixed << std::setprecision(10);
   while (i != trajectory.cend())
   {
     LOG(INFO) << "****************************************";
-    usleep(10000);
     LOG(INFO) << " ITERATION ID : " << iter++;
+    usleep(100000);
+    // Groundtruth::const_iterator gt;
     Groundtruth::const_iterator gt =
         find_closest(groundtruth.cbegin(), groundtruth.cend(),
                      static_cast<io::timestamp_t>(i->timestamp * 1e9));
-    CHECK(gt != groundtruth.cend());
+
     if (gt == groundtruth.cend())
     {
       LOG(WARNING) << "Couldn't find groundtruth for "
                    << static_cast<io::timestamp_t>(i->timestamp * 1e9);
+      LOG(INFO) << "breaking at: " << i->timestamp * 1e9 << ":" << i_->timestamp * 1e9;
       break;
     }
+    CHECK(gt != groundtruth.cend());
 
     InputType input;
 
+    // TODO
     Eigen::Vector3d avgBg = Eigen::Vector3d(gt->bw_x, gt->bw_y, gt->bw_z);
     Eigen::Vector3d avgBa = Eigen::Vector3d(gt->ba_x, gt->ba_y, gt->ba_z);
+    // Eigen::Vector3d avgBg = Eigen::Vector3d::Zero();
+    // Eigen::Vector3d avgBa = Eigen::Vector3d::Zero();
 
     Eigen::Vector3d avgA;
     avgA.setZero();
@@ -77,6 +84,7 @@ void run(const fs::path &sequence_path)
 
     io::ImuData::const_iterator it = imu_data.cbegin();
     // define the input with camera poses and IMU readings.
+
     for (unsigned n = 0; n < FLAGS_nframes; ++n)
     {
       it = start_imu(it, imu_data.cend(),
@@ -87,10 +95,9 @@ void run(const fs::path &sequence_path)
                      << static_cast<io::timestamp_t>(i->timestamp * 1e9);
         break;
       }
-      // LOG(INFO) << "Starting IMU at " << it->timestamp;
-      // LOG(INFO) << static_cast<io::timestamp_t>(i->timestamp*1e9);
 
-      Trajectory::const_iterator j = std::next(i, 1);
+      Trajectory::const_iterator j = std::next(i, c_step_size);
+
       if (j == trajectory.cend())
       {
         LOG(WARNING) << "Couldn't find next frame for "
@@ -137,11 +144,16 @@ void run(const fs::path &sequence_path)
       }
 
       avgA += pInt->dV / pInt->dT;
+
       input.emplace_back(
           i->pose, static_cast<io::timestamp_t>(i->timestamp * 1e9), j->pose,
           static_cast<io::timestamp_t>(j->timestamp * 1e9), pInt);
       i = j;
     }
+
+    LOG(INFO) << " Computing scale, biases and gravity in : " << std::fixed << std::setprecision(10)
+              << i_->timestamp << ":" << i->timestamp;
+    LOG(INFO) << ": Time difference = " << i->timestamp - i_->timestamp << ": counter = " << iter;
 
     // check defined input
     if (input.size() < FLAGS_nframes)
@@ -157,15 +169,13 @@ void run(const fs::path &sequence_path)
     avgA /= static_cast<double>(FLAGS_nframes);
     const double avgA_error =
         std::abs(avgA.norm() - IMU::GRAVITY_MAGNITUDE) / IMU::GRAVITY_MAGNITUDE;
-    // LOG(INFO) << "Average acceleration: " << 100.*avgA_error;
+    LOG(INFO) << "Average acceleration: " << avgA_error;
     if (avgA_error > 5e-3)
     {
-      // LOG(INFO) << "Average preintegration time: " << imu_integration /
-      // count; imu_integration = 0; count = 0;
-
       std::uint64_t timestamp = input[0].t1;
       // double initialization_time = i->timestamp - i_->timestamp;
 
+      // TODO
       // Eigen::Isometry3d T = compute_scale(input, groundtruth, true_scale);
       Eigen::Isometry3d T = Eigen::Isometry3d::Identity();
       true_scale = 1;
@@ -229,6 +239,7 @@ void run(const fs::path &sequence_path)
         methods[0].results.push_back(proposed_result);
         // write_result_to_txt_file("./proposed_camera_result.txt",
         //                          proposed_result);
+        LOG(INFO) << " Method 1 completed";
       }
 
       // Method 2: Proposed without prior
@@ -289,6 +300,7 @@ void run(const fs::path &sequence_path)
         methods[1].results.push_back(proposed_result);
         // write_result_to_txt_file("./proposed_camera_result_wo_prior.txt",
         //                          proposed_result);
+        LOG(INFO) << " Method 2 completed";
       }
 
       // Method 3: Iterative
@@ -413,6 +425,7 @@ void run(const fs::path &sequence_path)
 
         // write_result_to_txt_file("./iterative_camera_wo_prior.txt",
         //                          iterative_result);
+        LOG(INFO) << " Method 3 completed";
       }
 
       // Method 5: MQH
@@ -470,22 +483,19 @@ void run(const fs::path &sequence_path)
         methods[4].results.push_back(mqh_result);
 
         // write_result_to_txt_file("./mqh_result.txt", mqh_result);
+        LOG(INFO) << " Method 4 completed";
       }
 
-      i = next(i_, trajectory.cend(), 0.5);
+      i = next(i_, trajectory.cend(), skip_time);
       i_ = i;
       skipped = 0.;
     }
     else
     { // next attempt
-      skipped += 0.5;
+      skipped += skip_time;
       i = next(i_, trajectory.cend(), skipped); // 0.5s
     }
   }
-
-  // LOG(INFO) << StringPrintf("Average preintegration time: %.3f",
-  //                           1e-3 * static_cast<double>(imu_integration) /
-  //                           static_cast<double>(count));
 
   std::string proposed_file = sequence_name + "_ours.csv";
   LOG(INFO) << "Saving evaluation data into " << proposed_file;
@@ -512,6 +522,10 @@ void run(const fs::path &sequence_path)
   write_results_to_csv(methods, true_scale);
 
   LOG(INFO) << "done." << std::endl;
+
+  // LOG(INFO) << StringPrintf("Average preintegration time: %.3f",
+  //                           1e-3 * static_cast<double>(imu_integration) /
+  //                           static_cast<double>(count));
 }
 
 int main(int argc, char *argv[])

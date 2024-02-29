@@ -58,7 +58,7 @@ struct result_t {
 
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
-  bool success;
+  bool success, success_g = false, success_a = false;
   std::int64_t solve_ns, velocities_ns;
   double scale;
   Eigen::Vector3d bias_g, bias_a, gravity;
