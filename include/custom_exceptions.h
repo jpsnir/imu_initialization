@@ -15,8 +15,8 @@ class ill_defined : public exception
 
 public:
     ill_defined(const char* m){
-        const char* m_base = "The problem is ill defined.";
-        strcat(msg_, m_base);
+        const char* m_base = "Ill defined.";
+        strcpy(msg_, m_base);
         strcat(msg_, m);
     }
 };

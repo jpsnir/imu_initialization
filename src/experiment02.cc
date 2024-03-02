@@ -3,6 +3,7 @@
 #include <unistd.h>
 DEFINE_uint32(camera_step_size, 1, "camera step size in the estimated keyframe trajectory");
 DEFINE_double(gap_time, 0.5, "gap time for search keyframes from current timestamp - seconds");
+DEFINE_string(filename, "KeyFrameTrajectory.txt", "camera trajectory file obtained from VO algorithm");
 
 void run(const fs::path &sequence_path)
 {
@@ -12,8 +13,11 @@ void run(const fs::path &sequence_path)
 
   LOG(INFO) << "Running experiment: " << sequence_name;
   LOG(INFO) << StringPrintf("With %d keyframes", FLAGS_nframes);
-  fs::path trajectory_path = sequence_path / "KeyFrameTrajectory.txt";
+  fs::path trajectory_path = sequence_path / FLAGS_filename;
+  unsigned pos = FLAGS_filename.find_last_of(".");
+  string dataset_name = FLAGS_filename.substr(0, pos);
   CHECK(fs::is_regular_file(trajectory_path)) << "Path not found: " << trajectory_path.string();
+
 
   fs::path groundtruth_path = sequence_path / "state_groundtruth_estimate0" / "data.csv";
   CHECK(fs::is_regular_file(groundtruth_path)) << "Path not found: " << groundtruth_path.string();
@@ -29,7 +33,6 @@ void run(const fs::path &sequence_path)
   Trajectory trajectory(std::next(trajectory_.cbegin(), gap_time), trajectory_.cend());
   Trajectory::const_iterator i = start(trajectory, imu_data);
   LOG(INFO) << "Starting at " << static_cast<io::timestamp_t>(i->timestamp * 1e9);
-
   std::vector<evaluation_t> proposed_evaluation;
   std::vector<evaluation_t> proposed_noprior_evaluation;
   std::vector<evaluation_t> iterative_evaluation;
@@ -42,6 +45,8 @@ void run(const fs::path &sequence_path)
   unsigned iter = 0;
   Trajectory::const_iterator i_ = i;
   cout << std::fixed << std::setprecision(10);
+
+  /* MAIN LOOP */
   while (i != trajectory.cend())
   {
     LOG(INFO) << "******** ITERATION ID: " << iter++ << "**************";
@@ -72,6 +77,8 @@ void run(const fs::path &sequence_path)
         break;
       }
       Trajectory::const_iterator j = std::next(i, c_step_size);
+      LOG(INFO) << " Forming input: Timestamp of current keyframe : " << fixed << setprecision(10) << i->timestamp;
+      LOG(INFO) << " Forming input: Timestamp of next keyframe : " << fixed << setprecision(10) << j->timestamp;
       if (j == trajectory.cend())
       {
         LOG(WARNING) << "Couldn't find next frame for "
@@ -139,11 +146,12 @@ void run(const fs::path &sequence_path)
       std::uint64_t timestamp = input[0].t1;
  
       Eigen::Isometry3d T = compute_scale(input, groundtruth, true_scale);
-      //Eigen::Isometry3d T = Eigen::Isometry3d::Identity();
-      //true_scale = 1;
 
-      if (true_scale == -1)
-        continue;
+      // if (true_scale == -1){
+      //   LOG(INFO) << "True scale = -1. Rebuilding input.";
+      //   continue;
+      // }
+        
 
       // Method 1: Proposed solution
       {
@@ -195,6 +203,7 @@ void run(const fs::path &sequence_path)
         else
           LOG(ERROR) << "Proposed method failed at " << timestamp;
 
+        methods[0].dataset_name = dataset_name;
         methods[0].method_name = "proposed_cam" + std::to_string(FLAGS_nframes);
         methods[0].results.push_back(proposed_result);
         // write_result_to_txt_file("./proposed_camera_result.txt",
@@ -249,6 +258,7 @@ void run(const fs::path &sequence_path)
         }
         else
           LOG(ERROR) << "Proposed w/o prior method failed at " << timestamp;
+        methods[1].dataset_name = dataset_name;
         methods[1].method_name = "proposed_wo_prior_cam" + std::to_string(FLAGS_nframes);
         methods[1].results.push_back(proposed_result);
         // write_result_to_txt_file("./proposed_camera_result_wo_prior.txt",
@@ -304,6 +314,7 @@ void run(const fs::path &sequence_path)
         }
         else
           LOG(ERROR) << "Iterative method failed at " << timestamp;
+        methods[2].dataset_name = dataset_name;
         methods[2].method_name = "iterative_cam" + std::to_string(FLAGS_nframes);
         methods[2].results.push_back(iterative_result);
 
@@ -360,6 +371,7 @@ void run(const fs::path &sequence_path)
         }
         else
           LOG(ERROR) << "Iterative w/o prior method failed at " << timestamp;
+        methods[3].dataset_name = dataset_name;
         methods[3].method_name = "iterative_wo_prior_cam" + std::to_string(FLAGS_nframes);
         methods[3].results.push_back(iterative_result);
 
@@ -414,6 +426,7 @@ void run(const fs::path &sequence_path)
         }
         else
           LOG(ERROR) << "MQH method failed at " << timestamp;
+        methods[4].dataset_name = dataset_name;
         methods[4].method_name = "mqh_camera" + std::to_string(FLAGS_nframes);
         methods[4].results.push_back(mqh_result);
 
@@ -422,12 +435,16 @@ void run(const fs::path &sequence_path)
       }
 
       i = next(i_, trajectory.cend(), gap_time);
-      i_ = i;
+      // TODO
       if (i->timestamp == i_->timestamp){
         LOG(INFO) << " No new frames are being selected in skip time = " << gap_time;
-        LOG(INFO) << " Current keyframe timestamp: " << i->timestamp;
+        LOG(INFO) << " Current keyframe timestamp: " << std::fixed << std::setprecision(10) << i_->timestamp;
         i = std::next(i, c_step_size);
-        LOG(INFO) << " Jumping to next keyframe : " << i->timestamp;
+        LOG(INFO) << " Jumping to next keyframe : " << std::fixed << std::setprecision(10) << i->timestamp;
+        break;
+      }
+      else{
+        i_ = i;
       }
       skipped = 0.;
     }

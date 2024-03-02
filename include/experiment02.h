@@ -77,6 +77,7 @@ struct evaluation_t
 
 struct method_result
 {
+  string dataset_name;
   string method_name;
   vector<ResultType> results;
 };
@@ -264,9 +265,9 @@ Eigen::Isometry3d compute_scale(const InputType &input,
     if (N < 3)
     {
       stringstream ss;
-      ss << "At least 3 camera or ground truth poses are required. Only "
-         << N << " pose(s) found in the input.";
-      LOG(INFO) << ss.str();
+      ss << "Only "<< N << " pose(s) found in the input" 
+         << "Atleast 3 required for solving true scale";
+      //LOG(INFO) << ss.str();
       throw ill_defined(ss.str().c_str());
     }
 
@@ -291,8 +292,9 @@ Eigen::Isometry3d compute_scale(const InputType &input,
     T.linear() = M.block<3, 3>(0, 0) / scale_factor;
     T.translation() = M.block<3, 1>(0, 3);
   }
-  catch (exception ill_defined)
+  catch (exception &ill_defined)
   {
+    LOG(INFO) << ill_defined.what();
     T = Eigen::Isometry3d::Identity();
     scale_factor = -1;
   }
@@ -305,7 +307,7 @@ void write_results_to_csv(const vector<method_result> &method_results, double tr
 
   for (auto mr : method_results)
   {
-    fs::path filepath = "." / fs::path(mr.method_name + ".csv");
+    fs::path filepath = "." / fs::path(mr.dataset_name + "_" + mr.method_name + ".csv");
     vector<ResultType> results = mr.results;
     const int rows = results.size();
     const int cols = 12;
