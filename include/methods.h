@@ -58,6 +58,7 @@ struct result_t {
 
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
+  double timestamp_s;
   bool success, success_g = false, success_a = false;
   std::int64_t solve_ns, velocities_ns;
   double scale;
