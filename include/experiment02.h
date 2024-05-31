@@ -3,7 +3,8 @@
 #define FLAGS_CASES                                             \
   FLAG_CASE(string, logs_dir, "./logs/", "Logs save directory") \
   FLAG_CASE(uint64, nframes, 10,                                \
-            "Number of frames considered for initialization")
+            "Number of frames considered for initialization") \
+  FLAG_CASE(bool, underwater, false, "Use underwater spatial imu-cam calibration")
 #define ARGS_CASES ARG_CASE(dataset_dir)
 
 
@@ -77,6 +78,7 @@ struct evaluation_t
 
 struct method_result
 {
+  double timestamp_s;
   string dataset_name;
   string method_name;
   vector<ResultType> results;
@@ -310,19 +312,19 @@ void write_results_to_csv(const vector<method_result> &method_results, double tr
     fs::path filepath = "." / fs::path(mr.dataset_name + "_" + mr.method_name + ".csv");
     vector<ResultType> results = mr.results;
     const int rows = results.size();
-    const int cols = 12;
+    const int cols = 13;
     Eigen::MatrixXd mat(rows, cols + 1);
     LOG(INFO) << "Writing results to disk: " << mr.method_name;
     for (int i = 0; i < rows; i++)
     {
       Eigen::RowVectorXd r(cols + 1);
-      r << i, results[i].success, results[i].scale, true_scale,
+      r << i, results[i].timestamp_s, results[i].success, results[i].scale, true_scale,
           results[i].bias_g.transpose(), results[i].bias_a.transpose(),
           results[i].gravity.transpose();
       mat.row(i) = r;
     }
-    string header = "# index, flag, s_computed, s_true, b_g_x, b_g_y, b_g_z, b_a_x, b_a_y, "
-                    "b_a_z, g_x, g_y, g_z \n";
+    string header = "# index, timestamp_s, flag, s_computed_(v), s_true, b_g_x_(i), b_g_y_(i), b_g_z_(i), b_a_x_(i), b_a_y_(i), "
+                    "b_a_z_(i), g_x_(v), g_y_(v), g_z_(v) \n";
     csv::write(mat, filepath.string(), header);
   }
 }
